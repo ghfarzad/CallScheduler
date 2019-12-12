@@ -6,6 +6,12 @@ class NodeBase(object):
         self.senior_resident = senior_resident
         self.junior_resident = junior_resident
 
+    def get_senior_resident_id(self):
+        return self.senior_resident.id
+
+    def get_junior_resident_id(self):
+        return self.junior_resident.id
+
     def log(self):
         self.senior_resident.log()
 
@@ -22,14 +28,40 @@ class NodeSub(NodeBase, NodeMixin):
             self.children = children
 
     def add_child(self, child):
-        children = list(self.children)
-        children.append(child)
-        self.children = children
+        print(r'add_child({}, {})'.format(self.to_string(), child.to_string()))
 
-    def add_children(self, childs):
-        children = list(self.children)
-        children.extend(childs)
-        self.children = children
+        # - Unless otherwise agreed to by the affected resident, PARO and the Program Director,
+        #   residents should not be scheduled for consecutive periods of call. This provision
+        #   applies to both in-house and home call.
+        parent_senior_id = self.get_senior_resident_id()
+        parent_junior_id = self.get_junior_resident_id()
+        child_senior_id  = child.get_senior_resident_id()
+        child_junior_id  = child.get_junior_resident_id()
+        if parent_senior_id == child_senior_id or parent_junior_id == child_junior_id:
+            return
+
+        senior_num_calls = 0
+        junior_num_calls = 0
+
+        parent = self
+        while parent:
+            senior_num_calls += 1 if parent_senior_id == child_senior_id else 0
+            junior_num_calls += 1 if parent_junior_id == child_junior_id else 0
+            parent = parent.parent
+
+        print(r'    senior_num_calls: {}'.format(senior_num_calls))
+        print(r'    junior_num_calls: {}'.format(junior_num_calls))
+
+        senior_max_num_calls = child.senior_resident.get_max_num_calls()
+        junior_max_num_calls = child.junior_resident.get_max_num_calls()
+        if senior_num_calls <= senior_max_num_calls and junior_num_calls <= junior_max_num_calls:
+            children = list(self.children)
+            children.append(child)
+            self.children = children
+
+    def add_children(self, children):
+        for child in children:
+            self.add_child(child)
 
     def to_string(self):
         ret = r'date: {} - senior: {} - junior: {}'
