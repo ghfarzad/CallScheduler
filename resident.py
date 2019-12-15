@@ -27,6 +27,9 @@ class Resident(object):
         return self.first_name + r' ' + self.last_name
 
     def get_max_num_calls(self):
+        # Call maximums are based on total days ON service (vacation and other time away are
+        # deducted from total days on service before calculating maximum call)
+
         # If rotation is >1 month, in-house call maximum can be averaged over the
         # length of the rotation (maximum averaging length is 3 months) with a
         # maximum of 9 calls in any given month
@@ -44,6 +47,9 @@ class Resident(object):
             return num_months_during_service * 9 + 6
         if num_remaining_days < 30:
             return num_months_during_service * 9 + 7
+
+    def get_no_post_calls(self):
+        return self.time_off
 
     def log(self):
         print( r'first name : ' + self.first_name )
