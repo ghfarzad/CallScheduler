@@ -6,6 +6,8 @@ from resident import *
 from anytree import RenderTree
 from anytree.exporter import DotExporter
 
+import copy
+
 class ScheduleBlock:
     def __init__(self, start_date, end_date):
         self.start_date = start_date
@@ -26,57 +28,84 @@ class ScheduleBlock:
 
     def create(self):
         ret = {}
-        for date in set([self.start_date + datetime.timedelta(days = x) for x in range(0, (self.end_date - self.start_date).days)]):
+        for date in set([self.start_date + datetime.timedelta(days = x) for x in range(0, (self.end_date - self.start_date).days + 1)]):
             ret[date] = []
-            for senior_resident in self.get_senior_residents():
-
-                # - resident cannot be post call the first day of vacation
-                post_call_date = date + datetime.timedelta(days = 1)
-                if date not in senior_resident.time_off and post_call_date not in senior_resident.get_no_post_calls():
-                    for junior_resident in self.get_junior_residents():
-                        if date not in junior_resident.time_off and post_call_date not in junior_resident.get_no_post_calls():
-                            ret[date].append(NodeSub(date, senior_resident, junior_resident))
+            for junior_resident in self.get_junior_residents():
+                if date >= junior_resident.start_date and date <= junior_resident.end_date:
+                    # - resident cannot be post call the first day of vacation
+                    post_call_date = date + datetime.timedelta(days = 1)
+                    if date not in junior_resident.time_off and post_call_date not in junior_resident.get_no_post_calls():
+                        if junior_resident.allowed_solo_call:
+                            ret[date].append(NodeSub(date, None, junior_resident))
+                        else:
+                            for senior_resident in self.get_senior_residents():
+                                if date >= senior_resident.start_date and date <= senior_resident.end_date:
+                                    if date not in senior_resident.time_off and post_call_date not in senior_resident.get_no_post_calls():
+                                        ret[date].append(NodeSub(date, senior_resident, junior_resident))
 
         keys = list(sorted(ret.keys()))
-        for index in range(0, len(keys) - 1):
-            for parent in ret[keys[index]]:
-                parent.add_children(ret[keys[index + 1]])
+        root = NodeRoot()
+        root.add_children(ret[keys[0]])
 
-        root = NodeRoot(children = ret[keys[0]])
+        for index in range(0, len(keys) - 1):
+            print(keys[index])
+            tmp = []
+            for parent in ret[keys[index]]:
+                #print(r'    {}'.format(parent.to_string()))
+                children = copy.deepcopy(ret[keys[index + 1]])
+                parent.add_children(children)
+                tmp.extend(children)
+            ret[keys[index + 1]].extend(tmp)
+
         print(RenderTree(root))
 
-        #for key in sorted(ret.keys()):
-        #    print(key)
-        #    print(r'********')
-        #    for node in ret[key]:
-        #        print(node)
-
-
     def log(self):
-        for resident in self.residents:
+        for resident in self.redents:
             resident.log()
 
 
 def schedule():
-    # - Exclude PGY6-7 or thoracic fellow 
-    paranthaman_pranavan = JuniorResident(r'Parantheman', r'Pranavan',      r'PGY-1', r'Fam Med',   r'Gen Surg' , datetime.date(2019, 7, 1), datetime.date(2019,  7, 28))
-    preet_brar           = JuniorResident(r'Preet',       r'Brar',          r'PGY-2', r'Gen Surg',  r'Gen Surg' , datetime.date(2019, 7, 1), datetime.date(2019,  9, 22))
-    marcus_oosenburgh    = JuniorResident(r'Marcus',      r'Oosenburgh',    r'PGY-2', r'Gen Surg',  r'Endoscopy', datetime.date(2019, 7, 1), datetime.date(2019,  8, 25))
-    megan_melland_smith  = SeniorResident(r'Megan',       r'Melland-Smith', r'PGY-3', r'Gen Surg',  r'Gen Surg' , datetime.date(2019, 7, 1), datetime.date(2019,  8, 31))
-    lior_flor            = SeniorResident(r'Lior',        r'Flor',          r'PGY-4', r'Gen Surg',  r'Gen Surg' , datetime.date(2019, 7, 1), datetime.date(2019, 10, 31))
-    aleem_visram         = SeniorResident(r'Aleem',       r'Visram',        r'PGY-4', r'Gen Surg',  r'Gen Surg' , datetime.date(2019, 7, 1), datetime.date(2019, 10, 31))
+    katie_hicks       = JuniorResident(r'Katie',     r'Hicks',      r'PGY-1', r'Plas Surg', r'Gen Surg', datetime.date(2020, 1,  1), datetime.date(2020, 1, 12))
+    teagan_telesnicki = JuniorResident(r'Teagan',    r'Telesnicki', r'PGY-1', r'Gen Surg',  r'Thoracic', datetime.date(2020, 1,  1), datetime.date(2020, 1, 12))
+    paul_savage       = JuniorResident(r'Paul',      r'Savage',     r'PGY-1', r'Gen Surg',  r'Thoracic', datetime.date(2020, 1, 13), datetime.date(2020, 1, 31))
+    katherine_yang    = JuniorResident(r'Katherine', r'Yang',       r'PGY-1', r'Gen Surg',  r'Gen Surg', datetime.date(2020, 1,  6), datetime.date(2020, 1, 31))
+    shaerine_ensan    = JuniorResident(r'Shaerine',  r'Ensan',      r'PGY-1', r'Fam Med',   r'Gen Surg', datetime.date(2020, 1,  2), datetime.date(2020, 1,  3))
+    sarah_cho         = JuniorResident(r'Sarah',     r'Cho',        r'PGY-1', r'Fam Med',   r'Gen Surg', datetime.date(2020, 1,  4), datetime.date(2020, 1,  5))
+    mohammed_firdouse = JuniorResident(r'Mohammed',  r'Firdouse',   r'PGY-2', r'Vas Surg',  r'Gen Surg', datetime.date(2020, 1, 13), datetime.date(2020, 1, 31))
+    rashed_alaamer    = JuniorResident(r'Rashed',    r'Alaamer',    r'PGY-2', r'Gen Surg',  r'Gen Surg', datetime.date(2020, 1,  1), datetime.date(2020, 1, 12))
+    bethany_so        = JuniorResident(r'Bethany',   r'So',         r'PGY-2', r'Fam Med',   r'Gen Surg', datetime.date(2020, 1,  6), datetime.date(2020, 1, 12))
 
-    megan_melland_smith.add_time_off( 2019, 7, range(1, 2))
-    paranthaman_pranavan.add_time_off(2019, 7, range(1, 6))
+    dhruvin_hirpara   = SeniorResident(r'Dhruvin',   r'Hirpara',    r'PGY-3', r'Gen Surg',  r'Thoracic', datetime.date(2020, 1,  2), datetime.date(2020, 1, 31))
+    sergio_acuna      = SeniorResident(r'Sergio',    r'Acuna',      r'PGY-3', r'Gen Surg',  r'Gen Surg', datetime.date(2020, 1,  2), datetime.date(2020, 1, 31))
+    carolina_jimenez  = SeniorResident(r'Carolina',  r'Jimenez',    r'PGY-4', r'Gen Surg',  r'Gen Surg', datetime.date(2020, 1,  1), datetime.date(2020, 1, 31))
 
-    schedule_block = ScheduleBlock( datetime.date(2019, 7, 1), datetime.date(2019, 7, 31))
+
+    rashed_alaamer.add_time_off(   2020, 1, range( 1,  6))
+    teagan_telesnicki.add_time_off(2020, 1, range( 1,  5))
+    katherine_yang.add_time_off(   2020, 1, range(11, 20))
+
+    dhruvin_hirpara.add_no_call(   2020, 1, range(17, 21))
+    dhruvin_hirpara.add_no_call(   2020, 1, range(28, 29))
+
+    katie_hicks.allow_solo_call()
+
+    schedule_block = ScheduleBlock(
+        datetime.date(2020, 1,  1),
+        datetime.date(2020, 1,  7)
+    )
     residents = [
-        preet_brar,
-        lior_flor,
-        megan_melland_smith,
-        marcus_oosenburgh,
-        aleem_visram,
-        paranthaman_pranavan
+        katie_hicks,
+        teagan_telesnicki,
+        paul_savage,
+        katherine_yang,
+        shaerine_ensan,
+        sarah_cho,
+        mohammed_firdouse,
+        rashed_alaamer,
+        bethany_so,
+        dhruvin_hirpara,
+        sergio_acuna,
+        carolina_jimenez
     ]
     schedule_block.set_residents(residents)
 

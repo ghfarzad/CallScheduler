@@ -13,7 +13,8 @@ class Resident(object):
         self.end_date            = end_date
         self.time_off            = []
         self.no_call             = []
-        self.remaining_num_calls = self.get_max_num_calls
+        self.num_calls           = 0
+        self.num_weekend_calls   = 0
 
     def add_time_off(self, year, month, days):
         for day in days:
@@ -39,14 +40,17 @@ class Resident(object):
         num_months_during_service = num_on_service_days / 30
         num_remaining_days        = num_on_service_days % 30
 
-        if num_remaining_days < 19:
-            return num_months_during_service * 9 + num_remaining_days / 4
-        if num_remaining_days < 23:
-            return num_months_during_service * 9 + 5
-        if num_remaining_days < 27:
-            return num_months_during_service * 9 + 6
-        if num_remaining_days < 30:
-            return num_months_during_service * 9 + 7
+        if num_months_during_service < 1:
+            if num_remaining_days < 19:
+                return num_remaining_days / 4
+            if num_remaining_days < 23:
+                return 5
+            if num_remaining_days < 27:
+                return 6
+            if num_remaining_days < 30:
+                return 7
+        else: 
+            return 9
 
     def get_no_post_calls(self):
         return self.time_off
@@ -98,8 +102,17 @@ class SeniorResident(Resident):
 class JuniorResident(Resident):
     def __init__(self, first_name, last_name, level, program, division, start_date, end_date):
         Resident.__init__(self, first_name, last_name, level, program, division, start_date, end_date)
+        self.allowed_solo_call = False
+
+        if level == r'PGY-2':
+            if division == r'Gen Surg':
+                if program in [r'Gen Surg', r'Vas Surg']:
+                    self.allowed_solo_call = True
 
         assert level in [r'PGY-1', r'PGY-2']
+
+    def allow_solo_call(self):
+        self.allowed_solo_call = True
 
 if __name__ == r'__main__':
     main()
