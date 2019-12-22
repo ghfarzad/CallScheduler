@@ -28,7 +28,8 @@ class ScheduleBlock:
 
     def create(self):
         ret = {}
-        for date in set([self.start_date + datetime.timedelta(days = x) for x in range(0, (self.end_date - self.start_date).days + 1)]):
+        block = sorted(set([self.start_date + datetime.timedelta(days = x) for x in range(0, (self.end_date - self.start_date).days + 1)]))
+        for date in block:
             ret[date] = []
             for junior_resident in self.get_junior_residents():
                 if date >= junior_resident.start_date and date <= junior_resident.end_date:
@@ -37,25 +38,50 @@ class ScheduleBlock:
                     if date not in junior_resident.time_off and post_call_date not in junior_resident.get_no_post_calls():
                         if junior_resident.allowed_solo_call:
                             ret[date].append(NodeSub(date, None, junior_resident))
-                        else:
-                            for senior_resident in self.get_senior_residents():
-                                if date >= senior_resident.start_date and date <= senior_resident.end_date:
-                                    if date not in senior_resident.time_off and post_call_date not in senior_resident.get_no_post_calls():
-                                        ret[date].append(NodeSub(date, senior_resident, junior_resident))
+
+                        for senior_resident in self.get_senior_residents():
+                            if date >= senior_resident.start_date and date <= senior_resident.end_date:
+                                if date not in senior_resident.time_off and post_call_date not in senior_resident.get_no_post_calls():
+                                    ret[date].append(NodeSub(date, senior_resident, junior_resident))
 
         keys = list(sorted(ret.keys()))
         root = NodeRoot()
         root.add_children(ret[keys[0]])
 
+        for key in keys:
+            print(r'key: {} - num_values:{}'.format(key, len(ret[key])))
+
         for index in range(0, len(keys) - 1):
             print(keys[index])
+            print(r'  num parent nodes: {}'.format(len(ret[keys[index]])))
+            print(r'  num child candidates: {}'.format(len(ret[keys[index+1]])))
             tmp = []
+            child_key = keys[index + 1]
+            children  = ret[child_key]
             for parent in ret[keys[index]]:
-                #print(r'    {}'.format(parent.to_string()))
-                children = copy.deepcopy(ret[keys[index + 1]])
-                parent.add_children(children)
-                tmp.extend(children)
-            ret[keys[index + 1]].extend(tmp)
+                children_copy = []
+
+                # - Friday and sundays are handled by the same pair
+                if child_key.weekday() == 6:
+                    gp_senior_id = parent.parent.get_senior_resident_id()
+                    gp_junior_id = parent.parent.get_junior_resident_id()
+
+                    f = filter(
+                        lambda node: node.get_senior_resident_id() == gp_senior_id and node.get_junior_resident_id() == gp_junior_id,
+                        children
+                    )
+                    found_child = next(f)
+                    if found_child:
+                        children_copy.append(copy.deepcopy(found_child))
+                else:
+                    children_copy = copy.deepcopy(children)
+
+                added_children = parent.add_children(children_copy)
+                if len(added_children) > 0:
+                    tmp.extend(added_children)
+
+            ret[keys[index + 1]] = tmp
+            print(r'  num leaf nodes: {}'.format(len(ret[keys[index+1]])))
 
         print(RenderTree(root))
 
@@ -91,7 +117,7 @@ def schedule():
 
     schedule_block = ScheduleBlock(
         datetime.date(2020, 1,  1),
-        datetime.date(2020, 1,  7)
+        datetime.date(2020, 1,  31)
     )
     residents = [
         katie_hicks,
