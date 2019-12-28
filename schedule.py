@@ -6,13 +6,20 @@ from resident import *
 from anytree import RenderTree
 from anytree.exporter import DotExporter
 
+import concurrent.futures
 import copy
+import math
+import threading
 
 class ScheduleBlock:
     def __init__(self, start_date, end_date):
         self.start_date = start_date
         self.end_date   = end_date
         self.residents  = []
+        self.root       = NodeRoot()
+        self.lock       = threading.Lock()
+        self.ret        = {}
+        self.ret_copy   = {}
 
     def set_residents(self, residents):
         self.residents = residents
@@ -23,67 +30,75 @@ class ScheduleBlock:
     def get_junior_residents(self):
         return list(filter(lambda resident : isinstance(resident, JuniorResident), self.residents))
 
-    # TODO(FG): define
-    #def get_solo_capable_residents(self):
+    def append(self, thread_number, parents_chunk, children, date):
+        for parent in parents_chunk:
+            children_copy = copy.deepcopy(children)
+            # - Friday and sundays are handled by the same pair
+            if date.weekday() == 6:
+                gp_senior_id = parent.parent.get_senior_resident_id()
+                gp_junior_id = parent.parent.get_junior_resident_id()
+
+                f = filter(
+                    lambda node: node.get_senior_resident_id() == gp_senior_id and node.get_junior_resident_id() == gp_junior_id,
+                    children_copy
+                )
+                found_child = next(f)
+                if found_child:
+                    parent.add_children([found_child])
+            else:
+                parent.add_children(children_copy)
+
+            if len(parent.children) > 0:
+                self.ret_copy[date].extend(parent.children)
+
 
     def create(self):
-        ret = {}
         block = sorted(set([self.start_date + datetime.timedelta(days = x) for x in range(0, (self.end_date - self.start_date).days + 1)]))
         for date in block:
-            ret[date] = []
+            self.ret_copy[date] = []
+            self.ret[date] = []
             for junior_resident in self.get_junior_residents():
                 if date >= junior_resident.start_date and date <= junior_resident.end_date:
                     # - resident cannot be post call the first day of vacation
                     post_call_date = date + datetime.timedelta(days = 1)
                     if date not in junior_resident.time_off and post_call_date not in junior_resident.get_no_post_calls():
                         if junior_resident.allowed_solo_call:
-                            ret[date].append(NodeSub(date, None, junior_resident))
+                            self.ret[date].append(NodeSub(date, None, junior_resident))
 
                         for senior_resident in self.get_senior_residents():
                             if date >= senior_resident.start_date and date <= senior_resident.end_date:
                                 if date not in senior_resident.time_off and post_call_date not in senior_resident.get_no_post_calls():
-                                    ret[date].append(NodeSub(date, senior_resident, junior_resident))
+                                    self.ret[date].append(NodeSub(date, senior_resident, junior_resident))
 
-        keys = list(sorted(ret.keys()))
-        root = NodeRoot()
-        root.add_children(ret[keys[0]])
+        keys = list(sorted(self.ret.keys()))
+        self.root.add_children(self.ret[keys[0]])
 
-        for key in keys:
-            print(r'key: {} - num_values:{}'.format(key, len(ret[key])))
+        self.ret_copy[keys[0]].extend(self.ret[keys[0]])
 
+        max_num_workers = 500
         for index in range(0, len(keys) - 1):
-            print(keys[index])
-            print(r'  num parent nodes: {}'.format(len(ret[keys[index]])))
-            print(r'  num child candidates: {}'.format(len(ret[keys[index+1]])))
             tmp = []
-            child_key = keys[index + 1]
-            children  = ret[child_key]
-            for parent in ret[keys[index]]:
-                children_copy = []
+            parent_key   = keys[index]
+            child_key    = keys[index + 1]
+            parents      = self.ret_copy[parent_key]
+            num_parents  = len(parents)
 
-                # - Friday and sundays are handled by the same pair
-                if child_key.weekday() == 6:
-                    gp_senior_id = parent.parent.get_senior_resident_id()
-                    gp_junior_id = parent.parent.get_junior_resident_id()
+            print(child_key)
 
-                    f = filter(
-                        lambda node: node.get_senior_resident_id() == gp_senior_id and node.get_junior_resident_id() == gp_junior_id,
-                        children
+            worker_count = num_parents if num_parents <= max_num_workers else max_num_workers
+            chunk_length = math.ceil(num_parents / worker_count)
+            chunks = [parents[i:i+chunk_length] for i in range(0, len(parents), chunk_length)]
+            with concurrent.futures.ThreadPoolExecutor(max_workers = len(chunks)) as executor:
+                for thread_number in range(len(chunks)):
+                    executor.submit(
+                        self.append,
+                        thread_number,
+                        chunks[thread_number],
+                        copy.deepcopy(self.ret[child_key]),
+                        child_key
                     )
-                    found_child = next(f)
-                    if found_child:
-                        children_copy.append(copy.deepcopy(found_child))
-                else:
-                    children_copy = copy.deepcopy(children)
 
-                added_children = parent.add_children(children_copy)
-                if len(added_children) > 0:
-                    tmp.extend(added_children)
-
-            ret[keys[index + 1]] = tmp
-            print(r'  num leaf nodes: {}'.format(len(ret[keys[index+1]])))
-
-        print(RenderTree(root))
+        print(RenderTree(self.root))
 
     def log(self):
         for resident in self.redents:
@@ -117,7 +132,7 @@ def schedule():
 
     schedule_block = ScheduleBlock(
         datetime.date(2020, 1,  1),
-        datetime.date(2020, 1,  31)
+        datetime.date(2020, 1, 5)
     )
     residents = [
         katie_hicks,
